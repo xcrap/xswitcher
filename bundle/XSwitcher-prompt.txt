@@ -1,0 +1,24 @@
+Created with the built-in ImageGen tool, November 15, 2026.
+Style references supplied by the user: Glossy Gradient Analytics Dashboard Icon,
+Glossy Gradient Navigation Pin, Glossy Multicolor Orb Webcam, and Glossy Mountain Camera Icon.
+
+Final refinement prompt:
+Recreate the provided icon as a clean isolated product asset on true transparency.
+Keep the same design, colors and materials: a rounded-square translucent pale
+cyan and pearl glass base, two thick white-rim desktop tiles diagonally
+overlapping, teal/green wallpaper in back and blue/lavender wallpaper in front,
+two chunky polished yellow-orange-coral horizontal arrows pointing in opposite
+directions over them. Glossy 3D candy-ceramic app icon in the same exact visual
+family. CRITICAL: the reference has defective ragged transparent edges and
+white/cyan debris outside the icon; those are defects to eliminate. Build a NEW
+precise smooth outer rounded-square silhouette. No bloom, zero volumetric light,
+zero outer glow, zero haze, zero disconnected pixels or floating highlights.
+Highlights must lie strictly inside the solid opaque silhouette. Outside that
+continuous silhouette everything must be perfectly transparent. Crisp smooth
+antialiasing. Center the icon with a much wider transparent safety margin,
+12 percent on all four sides, all visible artwork strictly inside x=12%-88%
+and y=12%-88%. Square output, one app icon only. No text. No changes to concept.
+
+Packaging: generated alpha preserved; resized to a 1024 x 1024 PNG with sips.
+The Makefile creates the standard 16-1024 pixel icon representations with sips
+and packages them with Apple's iconutil.
