@@ -1,0 +1,98 @@
+# XSwitcher
+
+Switch macOS desktops (Spaces) instantly, with no sliding animation, from
+the keyboard or the trackpad. It's tiny: the part that stays running uses
+about 4 MB of memory.
+
+> **Where this comes from:** XSwitcher is based on
+> [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) by
+> **jurplel**, released under the MIT License. The trick that skips the
+> animation (a synthetic trackpad swipe, including the macOS 27 event
+> format) is jurplel's work, ported to C here. See [LICENSE](LICENSE).
+> Thank you, jurplel!
+
+## What's different from InstantSpaceSwitcher
+
+| | InstantSpaceSwitcher 3.1 | XSwitcher |
+|---|---|---|
+| Memory while running | about 15 MB or more | **about 4 MB** (17 MB more if you turn on the menu bar icon) |
+| Menu bar icon | always on | off by default; open the app to get Settings |
+| Ctrl+← / Ctrl+→ | you must turn off macOS's shortcuts first ([#46](https://github.com/jurplel/InstantSpaceSwitcher/issues/46)) | **takes them over directly**, nothing to change in System Settings |
+| Update checker | not built yet ([#1](https://github.com/jurplel/InstantSpaceSwitcher/issues/1)) | built in (checks this project's GitHub releases) |
+| Trackpad gesture turned off on macOS 27.2 | stops working without saying why ([#114](https://github.com/jurplel/InstantSpaceSwitcher/issues/114)) | Settings shows a warning and a button to fix it |
+| Settings window | stays in memory once opened | closes completely; only the 4 MB agent keeps running |
+
+The switching itself is the same speed in both apps, because macOS does that
+part. XSwitcher is lighter and stays out of the way.
+
+## Install
+
+```sh
+make install          # builds and copies XSwitcher.app to /Applications
+open /Applications/XSwitcher.app
+```
+
+Then, in the Settings window:
+
+1. Click **Allow in Settings…** and turn on both **XSwitcher** and
+   **xswitcher-agent** under Privacy & Security → Accessibility.
+2. Tick **Open XSwitcher when I log in**.
+
+The defaults are **Ctrl+←** and **Ctrl+→**. Click any shortcut to change it,
+press **Esc** to cancel or **Delete** to clear it.
+
+To get back to Settings later, open XSwitcher again from Applications or
+Spotlight.
+
+## How it works
+
+XSwitcher is two programs inside one app:
+
+- **xswitcher-agent** (C, about 4 MB) runs in the background. It listens for
+  your shortcuts and swipes and does the switching. It never loads AppKit and
+  sleeps until you press a shortcut.
+- **XSwitcher** (Swift/AppKit) is the Settings window and the optional menu
+  bar icon. It quits when you close the window, unless the menu bar icon is on.
+
+They share a plain text settings file at `~/.config/xswitcher/config`, which
+you can also edit by hand. After editing, reload with:
+
+```sh
+kill -HUP $(pgrep -x xswitcher-agent)
+```
+
+## Updates
+
+The app checks this project's GitHub releases once a day. Set the repo when
+building:
+
+```sh
+make install UPDATE_REPO=your-github-name/xswitcher
+```
+
+Then publish a GitHub release whose tag is the version number (e.g. `v0.3.0`).
+
+## Known limits
+
+- **Permissions after updates:** the app is signed locally (no paid Apple
+  developer certificate), so macOS treats each new build as a new app. You
+  may need to turn it on again under Accessibility after updating. Opening
+  the app after an update also re-registers "Open at login" if needed.
+- **macOS 27.2 and later** need the trackpad's "swipe between full-screen
+  apps" gesture turned on. Settings warns you if it's off.
+- Dragging a window while switching doesn't carry it along (same as upstream
+  [#29](https://github.com/jurplel/InstantSpaceSwitcher/issues/29)).
+
+## Project layout
+
+```
+agent/    background switcher in C (spaces, shortcuts, trackpad swipes)
+app/      Settings window and menu bar icon in Swift/AppKit
+bundle/   Info.plist and the login-item LaunchAgent plist
+Makefile  `make`, `make install`, `make clean`
+```
+
+## License
+
+MIT. Copyright (c) 2026 jurplel for the original InstantSpaceSwitcher code;
+see [LICENSE](LICENSE).
