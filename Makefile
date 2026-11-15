@@ -1,7 +1,16 @@
 # XSwitcher: `make` builds build/XSwitcher.app, `make install` copies it to /Applications.
+#
+# Signing: by default the app is signed ad hoc ("-"), and macOS forgets its
+# Accessibility permission after every rebuild. To keep it, put your own
+# certificate in local.mk (not in git), e.g.
+#   SIGN_ID = Developer ID Application: Your Name (TEAMID)
+-include local.mk
+
 VERSION     := 0.2.0
 BUILD       := 2
-UPDATE_REPO ?=
+UPDATE_REPO ?= xcrap/xswitcher
+SIGN_ID     ?= -
+SIGN_FLAGS  := $(if $(filter -,$(SIGN_ID)),,--options runtime --timestamp)
 
 APP         := build/XSwitcher.app
 AGENT_SRC   := $(wildcard agent/*.c)
@@ -33,8 +42,8 @@ $(APP): build/xswitcher-agent build/XSwitcher bundle/Info.plist bundle/local.xsw
 	sed -e 's|__VERSION__|$(VERSION)|' -e 's|__BUILD__|$(BUILD)|' -e 's|__UPDATE_REPO__|$(UPDATE_REPO)|' \
 	  bundle/Info.plist > $@/Contents/Info.plist
 	cp bundle/local.xswitcher.agent.plist $@/Contents/Library/LaunchAgents/
-	codesign --force --sign - --identifier local.xswitcher.agent $@/Contents/MacOS/xswitcher-agent
-	codesign --force --sign - $@
+	codesign --force --sign "$(SIGN_ID)" $(SIGN_FLAGS) --identifier local.xswitcher.agent $@/Contents/MacOS/xswitcher-agent
+	codesign --force --sign "$(SIGN_ID)" $(SIGN_FLAGS) $@
 	@echo "built $@"
 
 install: $(APP)

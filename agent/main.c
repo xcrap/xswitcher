@@ -89,9 +89,13 @@ static bool load_config(bool quiet) {
     return ok;
 }
 
+// AXIsProcessTrusted() is checked live. CGPreflightPostEventAccess() can keep
+// returning a stale "no" for the life of the process after you grant access.
+static bool has_access(void) { return AXIsProcessTrusted() || CGPreflightPostEventAccess(); }
+
 static void print_permissions(FILE *out) {
     fprintf(out, "permissions:\n  post events (Accessibility): %s\n  listen to events:            %s\n",
-            CGPreflightPostEventAccess() ? "yes" : "NO", CGPreflightListenEventAccess() ? "yes" : "NO");
+            has_access() ? "yes" : "NO", CGPreflightListenEventAccess() ? "yes" : "NO");
 }
 
 // macOS 27.2+ ignores synthetic swipes when the trackpad's "swipe between
@@ -130,7 +134,7 @@ static size_t format_status(char *buf, size_t len) {
         "pid=%d\nversion=%s\naccessibility=%s\nhotkeys_backend=%s\nhotkeys_armed=%d\n"
         "hotkeys_failed=%s\nhotkeys_paused=%s\nhotkey_tap=%s\nswipe_override=%s\nswipe_tap=%s\n"
         "trackpad_gesture=%s\nconfig=%s\nconfig_ok=%s\n",
-        getpid(), XS_VERSION, yesno(CGPreflightPostEventAccess()),
+        getpid(), XS_VERSION, yesno(has_access()),
         g_cfg.backend == BACKEND_TAP ? "tap" : "carbon", g_armed, failed, yesno(g_paused),
         g_cfg.backend == BACKEND_TAP ? yesno(hotkeys_tap_installed()) : "n/a",
         g_cfg.swipe_override ? "on" : "off", g_cfg.swipe_override ? yesno(swipe_enabled()) : "n/a",
@@ -167,7 +171,7 @@ static void remove_status(void) {
 static bool g_watching = false;
 
 static bool something_pending(void) {
-    return !CGPreflightPostEventAccess() ||
+    return !has_access() ||
            (!g_paused && g_cfg.backend == BACKEND_TAP && !hotkeys_tap_installed()) ||
            (g_cfg.swipe_override && !swipe_enabled());
 }
@@ -313,7 +317,7 @@ static dispatch_source_t on_signal(int sig, dispatch_block_t handler) {
 static void on_request_access(CFNotificationCenterRef c, void *o, CFNotificationName n,
                               const void *obj, CFDictionaryRef info) {
     (void)c; (void)o; (void)n; (void)obj; (void)info;
-    if (!CGPreflightPostEventAccess()) CGRequestPostEventAccess();
+    if (!has_access()) CGRequestPostEventAccess();
     watch_start();
 }
 
@@ -337,7 +341,7 @@ static int cmd_run(void) {
     spaces_init();
     g_cfg_ok = load_config(false);
 
-    if (!CGPreflightPostEventAccess()) {
+    if (!has_access()) {
         fprintf(stderr, "xswitcher-agent: no Accessibility permission yet. Allow XSwitcher in System Settings >\n"
                         "      Privacy & Security > Accessibility.\n");
         if (!g_no_prompt) CGRequestPostEventAccess();
@@ -412,7 +416,7 @@ static int cmd_switch(int argc, char **argv) {
         ok = spaces_go(have ? &info : NULL, !strcmp(what, "right") ? DIR_RIGHT : DIR_LEFT, &target);
     }
     double us = us_since(t0);
-    if (!CGPreflightPostEventAccess())
+    if (!has_access())
         fprintf(stderr, "xswitcher-agent: warning: no Accessibility permission, the system will drop the events\n");
     if (!ok) { fprintf(stderr, "xswitcher-agent: nothing to do (edge of the space list?)\n"); return 1; }
     if (g_verbose) fprintf(stderr, "xswitcher-agent: -> space %u, posted in %.0f us\n", target + 1, us);
@@ -451,7 +455,7 @@ static int cmd_check(void) {
     for (int i = 0; i < NBIND; i++) want += g_cfg.binds[i].enabled;
     if (g_cfg.backend == BACKEND_TAP) {
         printf("shortcuts: %d set, taken over at the keyboard level (needs Accessibility: %s)\n", want,
-               CGPreflightPostEventAccess() ? "granted" : "NOT granted");
+               has_access() ? "granted" : "NOT granted");
         print_permissions(stdout);
         return ok ? 0 : 1;
     }

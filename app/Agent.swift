@@ -28,7 +28,10 @@ struct AgentStatus {
 
     var pid: pid_t? { values["pid"].flatMap { pid_t($0) } }
     var isRunning: Bool { pid.map { kill($0, 0) == 0 } ?? false }
-    var hasAccessibility: Bool { values["accessibility"] == "yes" }
+    // An installed tap is proof of access too (taps fail without it).
+    var hasAccessibility: Bool {
+        values["accessibility"] == "yes" || values["hotkey_tap"] == "yes" || values["swipe_tap"] == "yes"
+    }
     var trackpadGestureOn: Bool { values["trackpad_gesture"] != "off" }
     var configOK: Bool { values["config_ok"] != "no" }
     var failedShortcuts: [String] { (values["hotkeys_failed"] ?? "").split(separator: ",").map(String.init) }
@@ -119,11 +122,15 @@ enum LoginItem {
     /// A new build has a new ad-hoc signature, and launchd refuses to start
     /// the registered agent until it is registered again. Returns true if it
     /// had to do that.
-    @discardableResult
-    static func repairIfNeeded() -> Bool {
+    /// Calls `done` once the agent should be up again. Registering right
+    /// after unregistering doesn't take, so it waits a second in between.
+    static func repairIfNeeded(then done: @escaping () -> Void) -> Bool {
         guard isEnabled, Agent.runningPID == nil else { return false }
         try? service.unregister()
-        try? service.register()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            try? service.register()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { done() }
+        }
         return true
     }
 

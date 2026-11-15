@@ -44,6 +44,19 @@ press **Esc** to cancel or **Delete** to clear it.
 To get back to Settings later, open XSwitcher again from Applications or
 Spotlight.
 
+### Signing (optional, recommended)
+
+Put your code-signing certificate in a `local.mk` file next to the Makefile
+(it's git-ignored):
+
+```make
+SIGN_ID = Developer ID Application: Your Name (TEAMID)
+```
+
+`security find-identity -v -p codesigning` lists the ones you have. With a
+certificate, the build uses the hardened runtime and a secure timestamp, and
+macOS keeps the Accessibility permission across updates.
+
 ## How it works
 
 XSwitcher is two programs inside one app:
@@ -74,9 +87,10 @@ Then publish a GitHub release whose tag is the version number (e.g. `v0.3.0`).
 
 ## Known limits
 
-- **Permissions after updates:** the app is signed locally (no paid Apple
-  developer certificate), so macOS treats each new build as a new app. You
-  may need to turn it on again under Accessibility after updating. Opening
+- **Permissions after updates:** macOS ties the Accessibility permission to
+  the app's signature. Builds signed with a real certificate keep it across
+  updates. Ad-hoc builds (the default without a certificate) look like a new
+  app every time, so you have to turn it on again after each rebuild. Opening
   the app after an update also re-registers "Open at login" if needed.
 - **macOS 27.2 and later** need the trackpad's "swipe between full-screen
   apps" gesture turned on. Settings warns you if it's off.

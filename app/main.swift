@@ -38,9 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        if LoginItem.repairIfNeeded() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Agent.ensureRunning() }
-        } else {
+        if !LoginItem.repairIfNeeded(then: { Agent.ensureRunning() }) {
             Agent.ensureRunning()
         }
         menuBar.openSettings = { [weak self] in self?.showSettings() }
