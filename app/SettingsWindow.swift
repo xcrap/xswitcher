@@ -412,8 +412,9 @@ final class AboutPane: NSViewController {
     override func loadView() {
         title = "About"
         let icon = NSImageView()
-        icon.image = Bundle.main.url(forResource: "XSwitcher", withExtension: "icns")
-            .flatMap { NSImage(contentsOf: $0) } ?? NSApp.applicationIconImage
+        // The main app's icon file, so the 1.5 MB icon is stored only once.
+        let mainIcon = Paths.mainApp.appendingPathComponent("Contents/Resources/XSwitcher.icns")
+        icon.image = NSImage(contentsOf: mainIcon) ?? NSApp.applicationIconImage
         icon.imageScaling = .scaleProportionallyUpOrDown
         NSLayoutConstraint.activate([
             icon.widthAnchor.constraint(equalToConstant: 64),

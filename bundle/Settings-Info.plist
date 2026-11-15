@@ -9,8 +9,6 @@
     <string>com.xcrap.xswitcher.settings</string>
     <key>CFBundleName</key>
     <string>XSwitcher Settings</string>
-    <key>CFBundleIconFile</key>
-    <string>XSwitcher</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

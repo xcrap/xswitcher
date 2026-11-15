@@ -51,10 +51,9 @@ $(ICON): bundle/XSwitcher.png
 
 $(APP): build/xswitcher-agent build/XSwitcherSettings $(ICON) bundle/Info.plist bundle/Settings-Info.plist
 	rm -rf $@
-	mkdir -p $@/Contents/MacOS $@/Contents/Resources "$(HELPER)/Contents/MacOS" "$(HELPER)/Contents/Resources"
+	mkdir -p $@/Contents/MacOS $@/Contents/Resources "$(HELPER)/Contents/MacOS"
 	cp build/xswitcher-agent $@/Contents/MacOS/
 	cp $(ICON) $@/Contents/Resources/
-	cp $(ICON) "$(HELPER)/Contents/Resources/"
 	sed $(PLIST_VARS) bundle/Info.plist > $@/Contents/Info.plist
 	cp build/XSwitcherSettings "$(HELPER)/Contents/MacOS/XSwitcher Settings"
 	sed $(PLIST_VARS) bundle/Settings-Info.plist > "$(HELPER)/Contents/Info.plist"

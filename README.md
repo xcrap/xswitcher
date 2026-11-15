@@ -78,7 +78,7 @@ Measured on macOS 27 (Apple silicon) with XSwitcher running in the background:
 | CPU while waiting | **0%** (0.23 s of CPU in 5½ minutes, mostly at startup) |
 | Wake-ups while idle | **0 per second**: it sleeps until you press a shortcut or swipe |
 | Work per shortcut | **~0.2 ms**, then macOS does the switch |
-| App size | **880 KB**, a ~290 KB download, Apple silicon and Intel |
+| App size | **2.4 MB** (1.5 MB of it is the icon), a 1.8 MB download, Apple silicon and Intel |
 
 For comparison, a minimal Swift menu bar app starts at about 15 MB. The
 switch itself takes the same time in any app like this, because the Dock does
