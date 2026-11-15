@@ -6,14 +6,15 @@
 #   SIGN_ID = Developer ID Application: Your Name (TEAMID)
 -include local.mk
 
-VERSION     := 0.3.0
-BUILD       := 3
+VERSION     := 0.3.1
+BUILD       := 4
 UPDATE_REPO ?= xcrap/xswitcher
 SIGN_ID     ?= -
 SIGN_FLAGS  := $(if $(filter -,$(SIGN_ID)),,--options runtime --timestamp)
 
 APP         := build/XSwitcher.app
 HELPER       = $(APP)/Contents/Helpers/XSwitcher Settings.app
+ICON        := build/XSwitcher.icns
 AGENT_SRC   := $(wildcard agent/*.c)
 AGENT_HDR   := $(wildcard agent/*.h)
 APP_SRC     := $(wildcard app/*.swift)
@@ -39,10 +40,21 @@ build/XSwitcherSettings: $(APP_SRC) Makefile
 	done
 	lipo -create $(foreach a,$(ARCHS),build/XSwitcherSettings-$(a)) -output $@
 
-$(APP): build/xswitcher-agent build/XSwitcherSettings bundle/Info.plist bundle/Settings-Info.plist
+$(ICON): bundle/XSwitcher.png
+	@mkdir -p build/XSwitcher.iconset
+	@for size in 16 32 128 256 512; do \
+	  sips -z $$size $$size $< --out build/XSwitcher.iconset/icon_$${size}x$${size}.png >/dev/null || exit 1; \
+	  double=$$((size * 2)); \
+	  sips -z $$double $$double $< --out build/XSwitcher.iconset/icon_$${size}x$${size}@2x.png >/dev/null || exit 1; \
+	done
+	iconutil -c icns build/XSwitcher.iconset -o $@
+
+$(APP): build/xswitcher-agent build/XSwitcherSettings $(ICON) bundle/Info.plist bundle/Settings-Info.plist
 	rm -rf $@
-	mkdir -p $@/Contents/MacOS "$(HELPER)/Contents/MacOS"
+	mkdir -p $@/Contents/MacOS $@/Contents/Resources "$(HELPER)/Contents/MacOS" "$(HELPER)/Contents/Resources"
 	cp build/xswitcher-agent $@/Contents/MacOS/
+	cp $(ICON) $@/Contents/Resources/
+	cp $(ICON) "$(HELPER)/Contents/Resources/"
 	sed $(PLIST_VARS) bundle/Info.plist > $@/Contents/Info.plist
 	cp build/XSwitcherSettings "$(HELPER)/Contents/MacOS/XSwitcher Settings"
 	sed $(PLIST_VARS) bundle/Settings-Info.plist > "$(HELPER)/Contents/Info.plist"

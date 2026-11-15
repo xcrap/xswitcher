@@ -79,14 +79,17 @@ enum Agent {
         for _ in 0..<40 where kill(pid, 0) == 0 { usleep(25_000) }
     }
 
-    static func goTo(desktop n: Int) { post("local.xswitcher.goto", ["index": n]) }
+    static func goTo(desktop n: Int) { post("com.xcrap.xswitcher.goto", ["index": n]) }
 
     /// Clears stale Accessibility entries left by older builds (a new
     /// signature makes the old switch show "on" but do nothing), then asks
     /// XSwitcher to show macOS's prompt, which adds a fresh entry.
     static func requestAccess() {
-        run("/usr/bin/tccutil", ["reset", "Accessibility", "local.xswitcher"], wait: true)
-        post("local.xswitcher.requestAccess", nil)
+        // local.xswitcher was the ID before 0.3.1.
+        for id in ["com.xcrap.xswitcher", "local.xswitcher"] {
+            run("/usr/bin/tccutil", ["reset", "Accessibility", id], wait: true)
+        }
+        post("com.xcrap.xswitcher.requestAccess", nil)
     }
 
     private static func send(_ sig: Int32) {

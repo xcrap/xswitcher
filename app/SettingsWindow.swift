@@ -411,7 +411,14 @@ final class AboutPane: NSViewController {
 
     override func loadView() {
         title = "About"
-        let icon = symbol("rectangle.on.rectangle.angled", .controlAccentColor, size: 40)
+        let icon = NSImageView()
+        icon.image = Bundle.main.url(forResource: "XSwitcher", withExtension: "icns")
+            .flatMap { NSImage(contentsOf: $0) } ?? NSApp.applicationIconImage
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 64),
+            icon.heightAnchor.constraint(equalToConstant: 64),
+        ])
         let name = label("XSwitcher", size: 20, weight: .semibold)
         let version = label("Version \(Updater.currentVersion)", size: 12, color: .secondaryLabelColor)
         let names = NSStackView(views: [name, version])
@@ -513,7 +520,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             item.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: vc.title)
             tabs.addTabViewItem(item)
         }
-        let w = NSWindow(contentViewController: tabs)
+        let w = SettingsNSWindow(contentViewController: tabs)
         w.styleMask = [.titled, .closable, .miniaturizable]
         w.toolbarStyle = .preference
         w.isReleasedWhenClosed = false
@@ -553,7 +560,42 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             try? rep.representation(using: .png, properties: [:])?
                 .write(to: dir.appendingPathComponent("\(name)\(dark ? "-dark" : "").png"))
         }
+        // The whole window too, title bar and tabs included (for the README),
+        // drawn as the active window like it looks on screen.
+        guard let w = window as? SettingsNSWindow else { return }
+        w.drawsAsActive = true
+        // Snapshot-only: ask AppKit for the focused look while the window
+        // stays off screen and in the background.
+        for name in ["acquireKeyAppearance", "acquireMainAppearance"] where w.responds(to: Selector((name))) {
+            w.perform(Selector((name)))
+        }
+        if w.responds(to: Selector(("_setForceMainAppearance:"))) {
+            w.perform(Selector(("_setForceMainAppearance:")), with: NSNumber(value: true))
+        }
+        w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        w.setFrameOrigin(NSPoint(x: -10_000, y: -10_000)) // drawn, but off screen
+        w.orderFrontRegardless()
+        for (i, name) in ["general", "shortcuts", "about"].enumerated() {
+            tabs.selectedTabViewItemIndex = i
+            tabs.fit()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1)) // let the toolbar catch up
+            guard let frame = w.contentView?.superview else { continue }
+            frame.layoutSubtreeIfNeeded()
+            frame.display()
+            guard let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { continue }
+            frame.cacheDisplay(in: frame.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?
+                .write(to: dir.appendingPathComponent("window-\(name)\(dark ? "-dark" : "").png"))
+        }
+        w.orderOut(nil)
     }
+}
+
+/// Only difference from NSWindow: snapshots can draw it as the key window.
+final class SettingsNSWindow: NSWindow {
+    var drawsAsActive = false
+    override var isKeyWindow: Bool { drawsAsActive || super.isKeyWindow }
+    override var isMainWindow: Bool { drawsAsActive || super.isMainWindow }
 }
 
 @MainActor

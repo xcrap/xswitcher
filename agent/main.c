@@ -367,8 +367,8 @@ static int cmd_run(void) {
     g_armed = hotkeys_register(&g_cfg, on_hotkey, false);
     apply_swipe(g_cfg.swipe_override);
 
-    observe(CFSTR("local.xswitcher.requestAccess"), on_request_access);
-    observe(CFSTR("local.xswitcher.goto"), on_goto);
+    observe(CFSTR("com.xcrap.xswitcher.requestAccess"), on_request_access);
+    observe(CFSTR("com.xcrap.xswitcher.goto"), on_goto);
     signal(SIGCHLD, SIG_IGN); // reap /usr/bin/open
     on_signal(SIGHUP, ^{
         bool ok = load_config(true);

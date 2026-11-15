@@ -67,8 +67,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Used only for --snapshot: draws controls as if the app were in front,
+/// without taking focus from whatever you're doing.
+final class SnapshotApplication: NSApplication {
+    override var isActive: Bool { true }
+}
+
 MainActor.assumeIsolated {
-    let app = NSApplication.shared
+    // The first .shared call decides the class of the app object.
+    let app = CommandLine.arguments.contains("--snapshot") ? SnapshotApplication.shared : NSApplication.shared
     let delegate = AppDelegate() // app.delegate is weak; this stays alive while run() runs
     app.delegate = delegate
     app.setActivationPolicy(.accessory)
