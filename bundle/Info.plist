@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- XSwitcher.app: the main program is the small C switcher (agent/). -->
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>XSwitcher</string>
+    <string>xswitcher-agent</string>
     <key>CFBundleIdentifier</key>
     <string>local.xswitcher</string>
     <key>CFBundleName</key>
@@ -20,12 +21,7 @@
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
     <key>NSHumanReadableCopyright</key>
     <string>Based on InstantSpaceSwitcher by jurplel (MIT License).</string>
-    <!-- GitHub repo checked for new versions, as "owner/name". Empty = not set up yet. -->
-    <key>XSUpdateRepo</key>
-    <string>__UPDATE_REPO__</string>
 </dict>
 </plist>

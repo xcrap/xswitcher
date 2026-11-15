@@ -5,6 +5,7 @@
 #include "hotkeys.h"
 #include "spaces.h"
 #include "swipe.h"
+#include "app.h"
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <dispatch/dispatch.h>
@@ -33,6 +34,7 @@ extern char **environ;
 static bool g_verbose = false;
 static bool g_no_prompt = false;
 static bool g_launch_menubar = true;
+static bool g_skip_settings = false;
 static char g_cfgpath[PATH_MAX];
 static char g_supdir[PATH_MAX];
 static Config g_cfg;
@@ -278,27 +280,40 @@ static void apply_swipe(bool want) {
     dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), NULL, swipe_retry);
 }
 
-// ----------------------------------------------------- menu bar launch --
+// ------------------------------------------------- app integration ----
 
-// Path of the enclosing XSwitcher.app, if the agent runs from inside one.
-static bool bundle_path(char *out, size_t len) {
-    char exe[PATH_MAX], real[PATH_MAX];
-    uint32_t sz = sizeof exe;
-    if (_NSGetExecutablePath(exe, &sz) != 0 || !realpath(exe, real)) return false;
-    char *p = strstr(real, ".app/Contents/MacOS/");
-    if (!p) return false;
-    p[4] = 0;
-    strlcpy(out, real, len);
-    return true;
+static void open_settings(void) { app_open_settings(false); }
+
+static void quit_cleanly(void) {
+    remove_status();
+    exit(0);
 }
 
-static void launch_menubar(void) {
-    char app[PATH_MAX];
-    if (!bundle_path(app, sizeof app)) return;
-    char *argv[] = {"/usr/bin/open", "-g", "-a", app, "--args", "--menubar", NULL};
-    pid_t pid;
-    if (posix_spawn(&pid, "/usr/bin/open", NULL, NULL, argv, environ) == 0)
-        fprintf(stderr, "xswitcher-agent: started menu bar icon\n");
+// Settings' "Allow…" button: show macOS's prompt, which adds XSwitcher to
+// the Accessibility list.
+static void on_request_access(CFNotificationCenterRef c, void *o, CFNotificationName n,
+                              const void *obj, CFDictionaryRef info) {
+    (void)c; (void)o; (void)n; (void)obj; (void)info;
+    if (!has_access()) app_request_access();
+    watch_start();
+}
+
+// The menu bar icon's "Desktop N" items. The Settings helper has no
+// Accessibility permission of its own, so the switch happens here.
+static void on_goto(CFNotificationCenterRef c, void *o, CFNotificationName n,
+                    const void *obj, CFDictionaryRef info) {
+    (void)c; (void)o; (void)n; (void)obj;
+    int index = 0;
+    CFNumberRef num = info ? CFDictionaryGetValue(info, CFSTR("index")) : NULL;
+    if (!num || CFGetTypeID(num) != CFNumberGetTypeID() || !CFNumberGetValue(num, kCFNumberIntType, &index) ||
+        index < 1 || index > 16) return;
+    Binding b = {"menu", ACT_INDEX, (unsigned)index - 1, 0, 0, true};
+    on_hotkey(&b);
+}
+
+static void observe(CFStringRef name, CFNotificationCallback cb) {
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDistributedCenter(), NULL, cb, name, NULL,
+                                    CFNotificationSuspensionBehaviorDeliverImmediately);
 }
 
 // ------------------------------------------------------------ commands --
@@ -309,16 +324,6 @@ static dispatch_source_t on_signal(int sig, dispatch_block_t handler) {
     dispatch_source_set_event_handler(s, handler);
     dispatch_resume(s);
     return s;
-}
-
-// The Settings window's "Allow" button posts this so the agent itself shows
-// up in the Accessibility list. Under launchd it is its own entry there,
-// separate from the XSwitcher app.
-static void on_request_access(CFNotificationCenterRef c, void *o, CFNotificationName n,
-                              const void *obj, CFDictionaryRef info) {
-    (void)c; (void)o; (void)n; (void)obj; (void)info;
-    if (!has_access()) CGRequestPostEventAccess();
-    watch_start();
 }
 
 static bool acquire_lock(void) {
@@ -341,10 +346,15 @@ static int cmd_run(void) {
     spaces_init();
     g_cfg_ok = load_config(false);
 
+    // Finder/Spotlight/login item open us as an app: answer open, reopen and
+    // quit events. This also checks in with the WindowServer.
+    AppCallbacks cb = {.open_settings = open_settings, .quit = quit_cleanly};
+    app_init(&cb, g_skip_settings);
+
     if (!has_access()) {
         fprintf(stderr, "xswitcher-agent: no Accessibility permission yet. Allow XSwitcher in System Settings >\n"
                         "      Privacy & Security > Accessibility.\n");
-        if (!g_no_prompt) CGRequestPostEventAccess();
+        if (!g_no_prompt) app_request_access();
     }
 
     // Open the WindowServer connection now (~1.7 MB, ~25 ms) so the first
@@ -357,9 +367,8 @@ static int cmd_run(void) {
     g_armed = hotkeys_register(&g_cfg, on_hotkey, false);
     apply_swipe(g_cfg.swipe_override);
 
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDistributedCenter(), NULL, on_request_access,
-                                    CFSTR("local.xswitcher.requestAccess"), NULL,
-                                    CFNotificationSuspensionBehaviorDeliverImmediately);
+    observe(CFSTR("local.xswitcher.requestAccess"), on_request_access);
+    observe(CFSTR("local.xswitcher.goto"), on_goto);
     signal(SIGCHLD, SIG_IGN); // reap /usr/bin/open
     on_signal(SIGHUP, ^{
         bool ok = load_config(true);
@@ -381,17 +390,13 @@ static int cmd_run(void) {
         g_armed = hotkeys_register(&g_cfg, on_hotkey, true);
         watch_start();
     });
-    dispatch_block_t quit = ^{
-        remove_status();
-        exit(0); // a clean exit tells launchd not to restart us
-    };
-    on_signal(SIGTERM, quit);
-    on_signal(SIGINT, quit);
+    on_signal(SIGTERM, ^{ quit_cleanly(); });
+    on_signal(SIGINT, ^{ quit_cleanly(); });
 
     fprintf(stderr, "xswitcher-agent %s: running (pid %d), %d shortcuts, macOS %s gesture path\n", XS_VERSION,
             getpid(), g_armed, spaces_requires_augmentation() ? "27+" : "legacy");
     watch_start();
-    if (g_launch_menubar && g_cfg.menubar) launch_menubar();
+    if (g_launch_menubar && g_cfg.menubar) app_open_settings(true);
 
     // Start-up (mostly the WindowServer connection) leaves freed but dirty
     // malloc pages behind. Hand them back once the loop is idle.
@@ -474,11 +479,13 @@ static void usage(FILE *out) {
             "       xswitcher-agent left | right   switch once and exit\n"
             "       xswitcher-agent index <n>      go to desktop n (1-based) and exit\n"
             "       xswitcher-agent info           show displays, desktops, permissions\n"
-            "       xswitcher-agent check          validate the config\n\n"
+            "       xswitcher-agent check          validate the config\n"
+            "       xswitcher-agent login on|off|status  open XSwitcher at login\n\n"
             "  -c file             config file (default: $XSWITCHER_CONFIG or ~/.config/xswitcher/config)\n"
             "  -v                  log every action with its timing\n"
             "  --no-prompt         don't open the Accessibility permission prompt\n"
-            "  --no-menubar-launch don't start the menu bar icon (used by the Settings app)\n",
+            "  --no-menubar-launch don't start the menu bar icon (used by the Settings app)\n"
+            "  --no-settings       don't open Settings on launch (used by the Settings app)\n",
             XS_VERSION);
 }
 
@@ -491,6 +498,8 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "-v")) g_verbose = true;
         else if (!strcmp(argv[i], "--no-prompt")) g_no_prompt = true;
         else if (!strcmp(argv[i], "--no-menubar-launch")) g_launch_menubar = false;
+        else if (!strcmp(argv[i], "--no-settings")) g_skip_settings = true;
+        else if (!strncmp(argv[i], "-psn_", 5)) continue; // old LaunchServices argument
         else if (!strcmp(argv[i], "-c") && i + 1 < argc) strlcpy(g_cfgpath, argv[++i], sizeof g_cfgpath);
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help") || !strcmp(argv[i], "help")) { usage(stdout); return 0; }
         else if (!strcmp(argv[i], "--version")) { printf("%s\n", XS_VERSION); return 0; }
@@ -502,6 +511,7 @@ int main(int argc, char **argv) {
     if (!strcmp(cmd, "run")) return cmd_run();
     if (!strcmp(cmd, "info")) return cmd_info();
     if (!strcmp(cmd, "check")) return cmd_check();
+    if (!strcmp(cmd, "login")) return app_login_cli(nrest > 1 ? rest[1] : "status");
     if (!strcmp(cmd, "left") || !strcmp(cmd, "right") || !strcmp(cmd, "index")) return cmd_switch(nrest, rest);
     usage(stderr);
     return 2;

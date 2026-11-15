@@ -1,6 +1,5 @@
 import Darwin
 import Foundation
-import ServiceManagement
 
 enum Paths {
     private static let env = ProcessInfo.processInfo.environment
@@ -18,8 +17,13 @@ enum Paths {
     }
 
     static var status: URL { support.appendingPathComponent("status") }
-    static var log: URL { support.appendingPathComponent("agent.log") }
-    static var agent: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/xswitcher-agent") }
+
+    /// This Settings helper lives in XSwitcher.app/Contents/Helpers/.
+    static var mainApp: URL {
+        Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    }
+
+    static var agent: URL { mainApp.appendingPathComponent("Contents/MacOS/xswitcher-agent") }
 }
 
 /// What the agent last reported in its status file.
@@ -37,7 +41,8 @@ struct AgentStatus {
     var failedShortcuts: [String] { (values["hotkeys_failed"] ?? "").split(separator: ",").map(String.init) }
 }
 
-/// Starts, signals and stops the background agent.
+/// The switcher itself is XSwitcher.app's main program. This window only
+/// talks to it: config file + signals + a couple of notifications.
 enum Agent {
     static func status() -> AgentStatus? {
         guard let text = try? String(contentsOf: Paths.status, encoding: .utf8) else { return nil }
@@ -54,94 +59,72 @@ enum Agent {
         return s.pid
     }
 
-    static func ensureRunning() {
-        if runningPID == nil { start() }
-    }
-
-    /// Launches the agent in its own session so it outlives this window.
-    /// It refuses to run twice (lock file), so calling this is always safe.
+    /// Opens XSwitcher.app through LaunchServices, so it runs as the app
+    /// (and macOS checks XSwitcher's own permission, not this window's).
     static func start() {
         guard runningPID == nil else { return }
-        try? FileManager.default.createDirectory(at: Paths.support, withIntermediateDirectories: true)
-        spawn(["run", "--no-prompt", "--no-menubar-launch"], logTo: Paths.log.path)
+        run("/usr/bin/open", ["-g", "-a", Paths.mainApp.path, "--args", "--no-settings", "--no-menubar-launch"])
     }
 
-    /// Runs the agent once, e.g. ["index", "3"], without waiting.
-    static func runOnce(_ args: [String]) {
-        spawn(args, logTo: "/dev/null")
-    }
+    static func ensureRunning() { if runningPID == nil { start() } }
 
     static func reload() { send(SIGHUP) }
     static func pause() { send(SIGUSR1) }
     static func resume() { send(SIGUSR2) }
 
-    /// Asks the agent to quit and waits up to a second for it.
+    /// Asks XSwitcher to quit and waits up to a second.
     static func stop() {
         guard let pid = runningPID else { return }
         kill(pid, SIGTERM)
         for _ in 0..<40 where kill(pid, 0) == 0 { usleep(25_000) }
     }
 
+    static func goTo(desktop n: Int) { post("local.xswitcher.goto", ["index": n]) }
+
+    /// Clears stale Accessibility entries left by older builds (a new
+    /// signature makes the old switch show "on" but do nothing), then asks
+    /// XSwitcher to show macOS's prompt, which adds a fresh entry.
+    static func requestAccess() {
+        run("/usr/bin/tccutil", ["reset", "Accessibility", "local.xswitcher"], wait: true)
+        post("local.xswitcher.requestAccess", nil)
+    }
+
     private static func send(_ sig: Int32) {
         if let pid = runningPID { kill(pid, sig) }
     }
 
-    private static func spawn(_ args: [String], logTo log: String) {
-        var attr: posix_spawnattr_t?
-        posix_spawnattr_init(&attr)
-        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETSID))
-        var fa: posix_spawn_file_actions_t?
-        posix_spawn_file_actions_init(&fa)
-        posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0)
-        posix_spawn_file_actions_addopen(&fa, 1, log, O_WRONLY | O_CREAT | O_APPEND, 0o644)
-        posix_spawn_file_actions_adddup2(&fa, 1, 2)
-        defer {
-            posix_spawnattr_destroy(&attr)
-            posix_spawn_file_actions_destroy(&fa)
-        }
-        let path = Paths.agent.path
-        let argv: [UnsafeMutablePointer<CChar>?] = ([path] + args).map { strdup($0) } + [nil]
-        let envp: [UnsafeMutablePointer<CChar>?] = ProcessInfo.processInfo.environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
-        defer { (argv + envp).forEach { free($0) } }
-        var pid: pid_t = 0
-        guard posix_spawn(&pid, path, &fa, &attr, argv, envp) == 0 else { return }
-        DispatchQueue.global(qos: .utility).async {
-            var st: Int32 = 0
-            waitpid(pid, &st, 0) // reap it if it exits while we are still open
-        }
+    private static func post(_ name: String, _ info: [String: Any]?) {
+        DistributedNotificationCenter.default().postNotificationName(
+            Notification.Name(name), object: nil, userInfo: info, deliverImmediately: true)
+    }
+
+    @discardableResult
+    static func run(_ tool: String, _ args: [String], wait: Bool = false) -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: tool)
+        p.arguments = args
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return "" }
+        guard wait else { return "" }
+        p.waitUntilExit()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
-/// "Open at login": registers the agent's LaunchAgent with launchd.
+/// "Open at login" for XSwitcher.app. Done by the main program
+/// (SMAppService.mainApp must run inside XSwitcher.app's own executable).
 enum LoginItem {
-    static let service = SMAppService.agent(plistName: "local.xswitcher.agent.plist")
+    enum State: String { case on, off, needsApproval = "needs-approval" }
 
-    static var isEnabled: Bool { service.status == .enabled }
-    static var needsApproval: Bool { service.status == .requiresApproval }
-
-    /// A new build has a new ad-hoc signature, and launchd refuses to start
-    /// the registered agent until it is registered again. Returns true if it
-    /// had to do that.
-    /// Calls `done` once the agent should be up again. Registering right
-    /// after unregistering doesn't take, so it waits a second in between.
-    static func repairIfNeeded(then done: @escaping () -> Void) -> Bool {
-        guard isEnabled, Agent.runningPID == nil else { return false }
-        try? service.unregister()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            try? service.register()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { done() }
-        }
-        return true
+    static func state() -> State {
+        State(rawValue: Agent.run(Paths.agent.path, ["login", "status"], wait: true)) ?? .off
     }
 
-    static func set(_ on: Bool) throws {
-        if on {
-            Agent.stop() // launchd starts its own copy right away
-            try service.register()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Agent.ensureRunning() }
-        } else {
-            try service.unregister()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { Agent.ensureRunning() }
-        }
+    @discardableResult
+    static func set(_ on: Bool) -> State {
+        State(rawValue: Agent.run(Paths.agent.path, ["login", on ? "on" : "off"], wait: true)) ?? .off
     }
 }

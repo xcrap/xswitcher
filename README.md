@@ -2,7 +2,7 @@
 
 Switch macOS desktops (Spaces) instantly, with no sliding animation, from
 the keyboard or the trackpad. It's tiny: the part that stays running uses
-about 4 MB of memory.
+about 7 MB of memory.
 
 > **Where this comes from:** XSwitcher is based on
 > [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) by
@@ -15,12 +15,12 @@ about 4 MB of memory.
 
 | | InstantSpaceSwitcher 3.1 | XSwitcher |
 |---|---|---|
-| Memory while running | about 15 MB or more | **about 4 MB** (17 MB more if you turn on the menu bar icon) |
+| Memory while running | about 15 MB or more | **about 7 MB** (17 MB more if you turn on the menu bar icon) |
 | Menu bar icon | always on | off by default; open the app to get Settings |
 | Ctrl+← / Ctrl+→ | you must turn off macOS's shortcuts first ([#46](https://github.com/jurplel/InstantSpaceSwitcher/issues/46)) | **takes them over directly**, nothing to change in System Settings |
 | Update checker | not built yet ([#1](https://github.com/jurplel/InstantSpaceSwitcher/issues/1)) | built in (checks this project's GitHub releases) |
 | Trackpad gesture turned off on macOS 27.2 | stops working without saying why ([#114](https://github.com/jurplel/InstantSpaceSwitcher/issues/114)) | Settings shows a warning and a button to fix it |
-| Settings window | stays in memory once opened | closes completely; only the 4 MB agent keeps running |
+| Settings window | stays in memory once opened | closes completely; only the 7 MB switcher keeps running |
 
 The switching itself is the same speed in both apps, because macOS does that
 part. XSwitcher is lighter and stays out of the way.
@@ -34,12 +34,13 @@ open /Applications/XSwitcher.app
 
 Then, in the Settings window:
 
-1. Click **Allow in Settings…** and turn on both **XSwitcher** and
-   **xswitcher-agent** under Privacy & Security → Accessibility.
-2. Tick **Open XSwitcher when I log in**.
+1. Click **Allow…** and turn on **XSwitcher** under Privacy & Security →
+   Accessibility.
+2. Turn on **Open at login**.
 
 The defaults are **Ctrl+←** and **Ctrl+→**. Click any shortcut to change it,
-press **Esc** to cancel or **Delete** to clear it.
+press **Esc** to cancel or **Delete** to clear it. macOS keeps ⌃← / ⌃→ to
+itself while recording, so use **Restore Defaults** to set those.
 
 To get back to Settings later, open XSwitcher again from Applications or
 Spotlight.
@@ -59,13 +60,16 @@ macOS keeps the Accessibility permission across updates.
 
 ## How it works
 
-XSwitcher is two programs inside one app:
+XSwitcher.app is one app with one permission entry and one login item:
 
-- **xswitcher-agent** (C, about 4 MB) runs in the background. It listens for
-  your shortcuts and swipes and does the switching. It never loads AppKit and
-  sleeps until you press a shortcut.
-- **XSwitcher** (Swift/AppKit) is the Settings window and the optional menu
-  bar icon. It quits when you close the window, unless the menu bar icon is on.
+- **The switcher** (C, about 7 MB) is the app's main program
+  (`Contents/MacOS/xswitcher-agent`). It listens for your shortcuts and
+  swipes and does the switching. It never loads AppKit and sleeps until you
+  press a shortcut. It also answers Finder and Spotlight: opening XSwitcher
+  opens Settings.
+- **XSwitcher Settings** (Swift/AppKit, in `Contents/Helpers`) is the
+  Settings window and the optional menu bar icon. It needs no permission of
+  its own, and it quits when you close the window unless the menu bar icon is on.
 
 They share a plain text settings file at `~/.config/xswitcher/config`, which
 you can also edit by hand. After editing, reload with:
@@ -100,9 +104,9 @@ Then publish a GitHub release whose tag is the version number (e.g. `v0.3.0`).
 ## Project layout
 
 ```
-agent/    background switcher in C (spaces, shortcuts, trackpad swipes)
-app/      Settings window and menu bar icon in Swift/AppKit
-bundle/   Info.plist and the login-item LaunchAgent plist
+agent/    the switcher, XSwitcher.app's main program (C)
+app/      XSwitcher Settings: Settings window and menu bar icon (Swift/AppKit)
+bundle/   Info.plist files for the app and the Settings helper
 Makefile  `make`, `make install`, `make clean`
 ```
 

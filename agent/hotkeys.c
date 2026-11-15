@@ -7,10 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Present in HIToolbox but no longer declared in the SDK headers.
-extern OSStatus ReceiveNextEvent(ItemCount n, const EventTypeSpec *list, EventTimeout timeout,
-                                 Boolean pull, EventRef *out);
-extern EventTargetRef GetEventDispatcherTarget(void);
+#include "app.h"
 
 // ------------------------------------------------------------- key names --
 
@@ -205,32 +202,13 @@ static OSStatus on_hotkey(EventHandlerCallRef next, EventRef ev, void *ud) {
     return noErr;
 }
 
-// Pull Carbon events off the WindowServer port whenever the run loop wakes.
-// This is what RunApplicationEventLoop does, minus its standard handlers
-// (measured ~1.7 MB heavier). No polling: we only run after a wakeup.
-static void pump(CFRunLoopObserverRef o, CFRunLoopActivity a, void *info) {
-    (void)o; (void)a; (void)info;
-    EventRef ev;
-    EventTargetRef target = GetEventDispatcherTarget();
-    while (ReceiveNextEvent(0, NULL, kEventDurationNoWait, true, &ev) == noErr) {
-        SendEventToEventTarget(ev, target);
-        ReleaseEvent(ev);
-    }
-}
-
 static void install_once(void) {
     static bool done = false;
     if (done) return;
     done = true;
     EventTypeSpec spec = {kEventClassKeyboard, kEventHotKeyPressed};
     InstallApplicationEventHandler(NewEventHandlerUPP(on_hotkey), 1, &spec, NULL, NULL);
-    // A first ReceiveNextEvent attaches HIToolbox's event port to the main run loop.
-    EventRef ev;
-    ReceiveNextEvent(0, NULL, kEventDurationNoWait, false, &ev);
-    CFRunLoopObserverRef obs = CFRunLoopObserverCreate(
-        NULL, kCFRunLoopAfterWaiting | kCFRunLoopBeforeWaiting, true, 0, pump, NULL);
-    CFRunLoopAddObserver(CFRunLoopGetMain(), obs, kCFRunLoopCommonModes);
-    CFRelease(obs);
+    events_start(); // app.c: the run-loop pump that delivers these events
 }
 
 // ------------------------------------------------------- tap backend ----

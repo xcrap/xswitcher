@@ -114,7 +114,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         refreshIcon()
     }
 
-    @objc private func goTo(_ sender: NSMenuItem) { Agent.runOnce(["index", "\(sender.tag)"]) }
+    @objc private func goTo(_ sender: NSMenuItem) { Agent.goTo(desktop: sender.tag) }
     @objc private func settingsClicked() { openSettings() }
     @objc private func quitClicked() { quit() }
     @objc private func openUpdate() { if let url = update?.url { NSWorkspace.shared.open(url) } }
