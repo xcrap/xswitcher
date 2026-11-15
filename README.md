@@ -58,6 +58,20 @@ SIGN_ID = Developer ID Application: Your Name (TEAMID)
 certificate, the build uses the hardened runtime and a secure timestamp, and
 macOS keeps the Accessibility permission across updates.
 
+### Notarizing a release
+
+With a Developer ID certificate, `make notarize` sends the app to Apple,
+staples the approval ticket and writes `build/XSwitcher-<version>.zip`,
+ready to attach to a GitHub release. It needs your Apple login saved once:
+
+```sh
+xcrun notarytool store-credentials xswitcher-notary --team-id <TEAMID>
+```
+
+It asks for your Apple ID and an app-specific password (account.apple.com →
+Sign-In and Security → App-Specific Passwords). Your developer account must
+have accepted Apple's latest agreement at developer.apple.com/account.
+
 ## How it works
 
 XSwitcher.app is one app with one permission entry and one login item:

@@ -50,6 +50,28 @@ $(APP): build/xswitcher-agent build/XSwitcherSettings bundle/Info.plist bundle/S
 	codesign --force --sign "$(SIGN_ID)" $(SIGN_FLAGS) $@
 	@echo "built $@"
 
+ZIP            := build/XSwitcher-$(VERSION).zip
+NOTARY_PROFILE ?= xswitcher-notary
+
+zip: $(APP)
+	rm -f $(ZIP)
+	ditto -c -k --keepParent $(APP) $(ZIP)
+	@echo "zipped $(ZIP)"
+
+# Sends the app to Apple, staples the ticket and re-zips it for a release.
+# One-time setup (stores your Apple ID login in the keychain):
+#   xcrun notarytool store-credentials xswitcher-notary --team-id <TEAMID>
+notarize: $(APP)
+	@test "$(SIGN_ID)" != "-" || { echo "notarize needs a Developer ID: set SIGN_ID in local.mk"; exit 1; }
+	rm -f $(ZIP)
+	ditto -c -k --keepParent $(APP) $(ZIP)
+	xcrun notarytool submit $(ZIP) --keychain-profile "$(NOTARY_PROFILE)" --wait
+	xcrun stapler staple $(APP)
+	rm -f $(ZIP)
+	ditto -c -k --keepParent $(APP) $(ZIP)
+	spctl --assess --type execute -vv $(APP)
+	@echo "notarized $(ZIP)"
+
 install: $(APP)
 	@pkill -x "XSwitcher Settings" || true
 	@pkill -x xswitcher-agent || true
@@ -60,4 +82,4 @@ install: $(APP)
 clean:
 	rm -rf build
 
-.PHONY: all install clean
+.PHONY: all zip notarize install clean
